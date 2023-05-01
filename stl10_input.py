@@ -150,7 +150,7 @@ def save_images(images, labels, name = "images"):
             if exc.errno == errno.EEXIST:
                 pass
         filename = directory + str(i)
-        print(filename)
+        # print(filename)
         save_image(image, filename)
         i = i+1
 

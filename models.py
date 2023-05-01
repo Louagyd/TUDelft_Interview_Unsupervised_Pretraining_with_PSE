@@ -81,4 +81,68 @@ class AutoEncoder(nn.Module):
         z = self.encoder(x)
         out = self.decoder(z)
         return z, out
+
+from torchvision.models import vgg19
+class AutoEncoder_VGG(nn.Module):
+    def __init__(self, latent_dim):
+        super(AutoEncoder_VGG, self).__init__()
+        
+        # Define the encoder
+        self.encoder = vgg19(pretrained=False).features
+        
+        # Replace the last maxpool layer with an adaptive pooling layer to handle variable input sizes
+        self.encoder[-1] = nn.AdaptiveAvgPool2d(output_size=(6, 6))
+        
+        # Define the projection layer
+        self.projection_layer = nn.Linear(6 * 6 * 512, latent_dim)
+        
+        # Define the decoder
+        self.decoder = Decoder(latent_dim)
+        
+    def forward(self, x):
+        # Encoder
+        x = self.encoder(x)
+        x = torch.flatten(x, start_dim=1)
+        x = self.projection_layer(x)
+        
+        # Decoder
+        out = self.decoder(x)
+        
+        return x, out
+
+from torchvision.models import resnet18
+class AutoEncoder_ResNet(nn.Module):
+    def __init__(self, latent_dim):
+        super(AutoEncoder_ResNet, self).__init__()
+        
+        # Define the encoder
+        self.encoder = resnet18(pretrained=False)
+        self.encoder.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        self.encoder.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1)) # replace the last avgpool layer with adaptive pooling
+        
+        # Define the projection layer
+        self.projection_layer = nn.Linear(512, latent_dim)
+        
+        # Define the decoder
+        self.decoder = Decoder(latent_dim)
+        
+    def forward(self, x):
+        # Encoder
+        x = self.encoder.conv1(x)
+        x = self.encoder.bn1(x)
+        x = self.encoder.relu(x)
+        x = self.encoder.maxpool(x)
+        x = self.encoder.layer1(x)
+        x = self.encoder.layer2(x)
+        x = self.encoder.layer3(x)
+        x = self.encoder.layer4(x)
+        x = self.encoder.avgpool(x)
+        x = torch.flatten(x, start_dim=1)
+        x = self.projection_layer(x)
+        
+        # Decoder
+        out = self.decoder(x)
+        
+        return x, out
+
     

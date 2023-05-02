@@ -8,10 +8,13 @@ from torchvision import transforms, datasets
 from torchvision.datasets import DatasetFolder
 from torch.utils.data import DataLoader
 # from torch.utils.tensorboard import SummaryWriter
+from torchviz import make_dot, make_dot_from_trace
 
 import wandb
 
 from models import AutoEncoder, AutoEncoder_VGG, AutoEncoder_ResNet
+from models_mae import mae_vit_large_patch16
+
 from loss import PSELoss
 
 import matplotlib.pyplot as plt
@@ -38,8 +41,8 @@ valid_size = len(dataset) - train_size
 train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
 
 # Create DataLoader objects for train and validation sets
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
-valid_loader = DataLoader(valid_dataset, batch_size=64, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
+train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+valid_loader = DataLoader(valid_dataset, batch_size=128, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
 
 # Add augmentation to the training DataLoader
 train_loader.dataset.transform = transforms.Compose([
@@ -49,11 +52,12 @@ train_loader.dataset.transform = transforms.Compose([
     
 # Define the model and optimizer
 
-model = AutoEncoder(latent_dim=256)
+# model = AutoEncoder(latent_dim=256)
 # model = AutoEncoder_VGG(latent_dim=256)
-# model = AutoEncoder_ResNet(latent_dim=256)
+# model = AutoEncoder_ResNet(latent_dim=1024)
+model = mae_vit_large_patch16(img_size=96)
 
-model_name = "AUTOENCODER_PRETRAIN_CNN_PSE"
+model_name = "AUTOENCODER_PRETRAIN_MASKED_MSE"
 if os.path.exists("models/"+model_name+".pt"):
     # load the model
     checkpoint = torch.load("models/"+model_name+".pt")
@@ -62,13 +66,13 @@ if os.path.exists("models/"+model_name+".pt"):
 
 
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 # Define the loss function and device
 MSELoss = nn.MSELoss()
 PSELoss = PSELoss(3)
 
-criterion = PSELoss
+criterion = MSELoss
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using Device", device)
@@ -169,6 +173,9 @@ def validate():
 # Train the model
 num_epochs = 1000
 best_loss = float('inf')
+x = torch.randn(1, 3, 96, 96).to(device).requires_grad_(True)
+make_dot(model(x), params=dict(model.named_parameters())).render("model_architecture", format="png")
+make_dot(model(x), params=dict(model.named_parameters()), show_attrs=True, show_saved=True).render("model_architecture_verbose", format="png")
 for epoch in range(num_epochs):
     print("Epoch:", epoch)
     print("Train")

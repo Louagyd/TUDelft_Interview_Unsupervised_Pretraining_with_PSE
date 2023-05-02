@@ -118,10 +118,10 @@ class AutoEncoder_ResNet(nn.Module):
         # Define the encoder
         self.encoder = resnet18(pretrained=False)
         self.encoder.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.encoder.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1)) # replace the last avgpool layer with adaptive pooling
+        self.encoder.avgpool = nn.AdaptiveAvgPool2d(output_size=(3, 3)) # replace the last avgpool layer with adaptive pooling
         
         # Define the projection layer
-        self.projection_layer = nn.Linear(512, latent_dim)
+        self.projection_layer = nn.Linear(512*3*3, latent_dim)
         
         # Define the decoder
         self.decoder = Decoder(latent_dim)

@@ -2,3 +2,4 @@ matplotlib
 scipy
 imageio
 wandb
+timm

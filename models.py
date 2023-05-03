@@ -110,13 +110,19 @@ class AutoEncoder_VGG(nn.Module):
         
         return x, out
 
-from torchvision.models import resnet18
+    
+import io
+
+
+from torchvision.models import resnet18, ResNet18_Weights
 class AutoEncoder_ResNet(nn.Module):
     def __init__(self, latent_dim):
         super(AutoEncoder_ResNet, self).__init__()
         
         # Define the encoder
-        self.encoder = resnet18(pretrained=False)
+        # self.encoder = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.encoder = resnet18(pretrained = False)
+        
         self.encoder.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.encoder.avgpool = nn.AdaptiveAvgPool2d(output_size=(3, 3)) # replace the last avgpool layer with adaptive pooling
         

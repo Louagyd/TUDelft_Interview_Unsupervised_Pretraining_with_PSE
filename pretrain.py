@@ -57,7 +57,7 @@ train_loader.dataset.transform = transforms.Compose([
 # model = AutoEncoder_ResNet(latent_dim=1024)
 model = mae_vit_large_patch16(img_size=96)
 
-model_name = "AUTOENCODER_PRETRAIN_MASKED_MSE"
+model_name = "AUTOENCODER_PRETRAIN_MASKED_PSE"
 if os.path.exists("models/"+model_name+".pt"):
     # load the model
     checkpoint = torch.load("models/"+model_name+".pt")
@@ -72,7 +72,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.0001)
 MSELoss = nn.MSELoss()
 PSELoss = PSELoss(3)
 
-criterion = MSELoss
+criterion = PSELoss
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using Device", device)

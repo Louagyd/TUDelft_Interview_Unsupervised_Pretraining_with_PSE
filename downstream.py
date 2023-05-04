@@ -21,6 +21,8 @@ from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, random_split
 import torchvision.transforms as transforms
 
+from pytorch_lightning.callbacks import TQDMProgressBar
+
 class DownstreamWrapper(pl.LightningModule):
     def __init__(self, autoencoder_model, num_classes, features_dim):
         super().__init__()
@@ -209,66 +211,39 @@ class KFoldDataModule(pl.LightningDataModule):
         return DataLoader(dataset=self.data_test, batch_size=self.hparams.batch_size, num_workers=self.hparams.num_workers,
                           pin_memory=self.hparams.pin_memory)
 
-
-def evaluate(model, test_loader):
-    correct = 0
-    top2_correct = 0
-    top4_correct = 0
-    total = 0
-    
-    all_preds = []
-    # loop over the test data and calculate the accuracy
-    for images, labels in tqdm(test_loader):
-        print(1)
-        outputs = model(images)
-        print(2)
-        preds = F.softmax(outputs, dim=1)
-        print(3)
-        all_preds.append(preds)
-        print(4)
-        _, predicted = torch.max(outputs.data, 1)
-        print(5)
-        # _, top2_predictions = torch.topk(outputs.data, 2)
-        # _, top4_predictions = torch.topk(outputs.data, 4)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-        # top2_correct += (top2_predictions[:, 0] == labels.unsqueeze(1)).sum().item()
-        # top4_correct += (top4_predictions[:, 0] == labels.unsqueeze(1)).sum().item()
-    accuracy = 100 * correct / total
-    # accuracy_top2 = 100 * top2_correct / total
-    # accuracy_top4 = 100 * top4_correct / total
-    return torch.cat(all_preds, dim=0), accuracy
-
 features_dim=256
 autoencoder_model = AutoEncoder(latent_dim=256)
 # autoencoder_model = AutoEncoder_VGG(latent_dim=256)
 # autoencoder_model = AutoEncoder_ResNet(latent_dim=1024)
 # autoencoder_model = mae_vit_large_patch16(img_size=96)
 
-
-autoencoder_model_name = 'AUTOENCODER_PRETRAIN_CNN_MSE'
-if os.path.exists("models/"+autoencoder_model_name+".pt"):
-    # load the model
-    checkpoint = torch.load("models/"+autoencoder_model_name+".pt")
-    autoencoder_model.load_state_dict(checkpoint['model_state_dict'])
-
+autoencoder_model_name = 'AUTOENCODER_PRETRAIN_CNN_PSE6'
+early_stop_callback = pl.callbacks.EarlyStopping(monitor="valid_loss" , patience=20)
+checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath="models/"+autoencoder_model_name, save_top_k=1, monitor="valid_loss")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using Device", device)
 
-# from pytorch_lightning.loggers import WandbLogger
-# wandb_logger = WandbLogger(project='tudelft_interview')
-early_stop_callback = pl.callbacks.EarlyStopping(monitor="valid_loss" , patience=20)
-checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath="models/"+autoencoder_model_name, save_top_k=1, monitor="valid_loss")
-
-model = DownstreamWrapper(autoencoder_model, num_classes=10, features_dim=features_dim)
-model.to(device)
 num_splits = 5
 all_preds = []
 for k in range(num_splits):
+    if os.path.exists("models/"+autoencoder_model_name+".pt"):
+        # load the model
+        checkpoint = torch.load("models/"+autoencoder_model_name+".pt")
+        autoencoder_model.load_state_dict(checkpoint['model_state_dict'])
+   
+
+    # from pytorch_lightning.loggers import WandbLogger
+    # wandb_logger = WandbLogger(project='tudelft_interview')
+    
+    model = DownstreamWrapper(autoencoder_model, num_classes=10, features_dim=features_dim)
+    model.to(device)
+    
+    
     data_module = KFoldDataModule(k = k, num_splits = num_splits)
     data_module.setup()
     
     trainer = pl.Trainer(max_epochs=500, gradient_clip_val=0.5, callbacks=[early_stop_callback,
+                                                                           TQDMProgressBar(refresh_rate=100),
                                                                            checkpoint_callback])
     trainer.fit(model, data_module)
     

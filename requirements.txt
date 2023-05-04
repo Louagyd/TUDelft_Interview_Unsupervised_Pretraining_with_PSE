@@ -3,3 +3,5 @@ scipy
 imageio
 wandb
 timm
+pytorch_lightning
+scikit-learn

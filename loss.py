@@ -11,7 +11,7 @@ class PSELoss(nn.Module):
         n = y_true.size(0)
 
         diff = torch.abs(y_true - y_pred)
-        kernel = self.get_kernel(diff.size(), device=diff.device)
+        kernel = self.get_kernel(device=diff.device)
         conv = F.conv2d(diff, kernel, padding='same')
         loss = torch.mean(conv**2)
 
@@ -20,13 +20,13 @@ class PSELoss(nn.Module):
     def get_loss_image(self, y_true, y_pred):
         
         diff = torch.abs(y_true - y_pred)
-        kernel = self.get_kernel(diff.size(), device=diff.device)
+        kernel = self.get_kernel(device=diff.device)
         conv = F.conv2d(diff, kernel, padding='same')
-        loss_image = conv**2
+        loss_image = conv**0.5
 
         return loss_image
     
-    def get_kernel(self, shape, device):
+    def get_kernel(self, device):
         ksize = int(2 * self.sigma + 1)
         kernel = torch.zeros(3, 3, ksize, ksize).to(device)
         for c in range(3):

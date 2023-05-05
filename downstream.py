@@ -195,6 +195,8 @@ class KFoldDataModule(pl.LightningDataModule):
             self.data_train.samples = [self.data_train.samples[i] for i in train_indexes]
             self.data_val.samples = [self.data_val.samples[i] for i in val_indexes]
             
+            print(self.data_val.samples[0])
+            
     def train_dataloader(self):
         out_loader = DataLoader(dataset=self.data_train, batch_size=self.hparams.batch_size, num_workers=self.hparams.num_workers,
                           pin_memory=self.hparams.pin_memory, shuffle=True)
@@ -211,64 +213,92 @@ class KFoldDataModule(pl.LightningDataModule):
         return DataLoader(dataset=self.data_test, batch_size=self.hparams.batch_size, num_workers=self.hparams.num_workers,
                           pin_memory=self.hparams.pin_memory)
 
-features_dim=256
-autoencoder_model = AutoEncoder(latent_dim=256)
-# autoencoder_model = AutoEncoder_VGG(latent_dim=256)
-# autoencoder_model = AutoEncoder_ResNet(latent_dim=1024)
-# autoencoder_model = mae_vit_large_patch16(img_size=96)
 
-autoencoder_model_name = 'AUTOENCODER_PRETRAIN_CNN_PSE6'
-early_stop_callback = pl.callbacks.EarlyStopping(monitor="valid_loss" , patience=20)
-checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath="models/"+autoencoder_model_name, save_top_k=1, monitor="valid_loss")
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print("Using Device", device)
-
-num_splits = 5
-all_preds = []
-for k in range(num_splits):
-    if os.path.exists("models/"+autoencoder_model_name+".pt"):
-        # load the model
-        checkpoint = torch.load("models/"+autoencoder_model_name+".pt")
-        autoencoder_model.load_state_dict(checkpoint['model_state_dict'])
-   
-
-    # from pytorch_lightning.loggers import WandbLogger
-    # wandb_logger = WandbLogger(project='tudelft_interview')
+def main(args):
     
-    model = DownstreamWrapper(autoencoder_model, num_classes=10, features_dim=features_dim)
-    model.to(device)
+    num_epochs = args.num_epochs
+    autoencoder_model_type = args.model_type
+    autoencoder_model_name = args.model_name
+    num_splits = args.num_splits
+    batch_size = args.batch_size
+    num_workers = args.num_workers
     
+    if autoencoder_model_type == "CNN":
+        features_dim=256
+        autoencoder_model = AutoEncoder(latent_dim=256)
+    elif autoencoder_model_type == "VGG":
+        features_dim=256
+        autoencoder_model = AutoEncoder_VGG(latent_dim=256)
+    elif autoencoder_model_type == "RESNET":
+        features_dim=1024
+        autoencoder_model = AutoEncoder_ResNet(latent_dim=1024)
+    elif autoencoder_model_type == "MASKED":
+        features_dim=1024
+        autoencoder_model = mae_vit_large_patch16(img_size=96)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Using Device", device)
+
+    all_preds = []
+    for k in range(num_splits):
+        if os.path.exists("models/"+autoencoder_model_name+".pt"):
+            # load the model
+            checkpoint = torch.load("models/"+autoencoder_model_name+".pt")
+            autoencoder_model.load_state_dict(checkpoint['model_state_dict'])
+
+
+        # from pytorch_lightning.loggers import WandbLogger
+        # wandb_logger = WandbLogger(project='tudelft_interview')
+        early_stop_callback = pl.callbacks.EarlyStopping(monitor="valid_loss" , patience=20)
+        checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath="models/"+autoencoder_model_name, save_top_k=1, monitor="valid_loss")
+        model = DownstreamWrapper(autoencoder_model, num_classes=10, features_dim=features_dim)
+        model.to(device)
+
+
+        data_module = KFoldDataModule(k = k, num_splits = num_splits, num_workers=num_workers)
+        data_module.setup()
+
+        trainer = pl.Trainer(max_epochs=num_epochs, gradient_clip_val=0.5, callbacks=[early_stop_callback,
+                                                                               TQDMProgressBar(refresh_rate=100),
+                                                                               checkpoint_callback])
+        trainer.fit(model, data_module)
+
+        results = trainer.test(model, data_module, ckpt_path="best")
+        # model_preds, accuracy = evaluate(model, test_loader)
+        # print(f"Split {k}: accuracy = {accuracy*100:.4f}, accuracy_top2 = {accuracy_top2*100:.4f}, accuracy_top4 = {accuracy_top4*100:.4f}")
+        all_preds.append(torch.cat(model.test_preds, dim=0))
+        model.test_preds = []
+
+    import numpy as np
+
+    ensemble_preds = torch.mean(torch.stack(all_preds), dim=0)
+    test_labels = np.asarray([data_module.data_test[i][1] for i in range(len(data_module.data_test))])
+    ensemble_preds = ensemble_preds.cpu().numpy()
+
+    ensemble_acc = (ensemble_preds.argmax(axis=1) == test_labels).mean()
+
+    # Top-2 accuracy
+    top2_preds = np.argsort(ensemble_preds, axis=1)[:, -2:]
+    ensemble_top2_acc = np.mean(np.any(top2_preds == test_labels.reshape(-1, 1), axis=1))
+
+    # Top-4 accuracy
+    top4_preds = np.argsort(ensemble_preds, axis=1)[:, -4:]
+    ensemble_top4_acc = np.mean(np.any(top4_preds == test_labels.reshape(-1, 1), axis=1))
+
+    print(f"Ensemble accuracy: {ensemble_acc*100:.4f}")
+    print(f"Ensemble top-2 accuracy: {ensemble_top2_acc*100:.4f}")
+    print(f"Ensemble top-4 accuracy: {ensemble_top4_acc*100:.4f}")
+
+
+import argparse
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Launch Pretraining')
+    parser.add_argument('--num_epochs', type=int, default=1000)
+    parser.add_argument('--model_type', type=str, default='CNN')
+    parser.add_argument('--model_name', type=str, default='AUTOENCODER_PRETRAIN_CNN_MSE')
+    parser.add_argument('--num_splits', type=float, default=5)
+    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--num_workers', type=int, default=4)
     
-    data_module = KFoldDataModule(k = k, num_splits = num_splits)
-    data_module.setup()
-    
-    trainer = pl.Trainer(max_epochs=500, gradient_clip_val=0.5, callbacks=[early_stop_callback,
-                                                                           TQDMProgressBar(refresh_rate=100),
-                                                                           checkpoint_callback])
-    trainer.fit(model, data_module)
-    
-    results = trainer.test(model, data_module, ckpt_path="best")
-    # model_preds, accuracy = evaluate(model, test_loader)
-    # print(f"Split {k}: accuracy = {accuracy*100:.4f}, accuracy_top2 = {accuracy_top2*100:.4f}, accuracy_top4 = {accuracy_top4*100:.4f}")
-    all_preds.append(torch.cat(model.test_preds, dim=0))
-    model.test_preds = []
-    
-import numpy as np
-
-ensemble_preds = torch.mean(torch.stack(all_preds), dim=0)
-test_labels = np.asarray([data_module.data_test[i][1] for i in range(len(data_module.data_test))])
-ensemble_preds = ensemble_preds.cpu().numpy()
-
-ensemble_acc = (ensemble_preds.argmax(axis=1) == test_labels).mean()
-
-# Top-2 accuracy
-top2_preds = np.argsort(ensemble_preds, axis=1)[:, -2:]
-ensemble_top2_acc = np.mean(np.any(top2_preds == test_labels.reshape(-1, 1), axis=1))
-
-# Top-4 accuracy
-top4_preds = np.argsort(ensemble_preds, axis=1)[:, -4:]
-ensemble_top4_acc = np.mean(np.any(top4_preds == test_labels.reshape(-1, 1), axis=1))
-
-print(f"Ensemble accuracy: {ensemble_acc*100:.4f}")
-print(f"Ensemble top-2 accuracy: {ensemble_top2_acc*100:.4f}")
-print(f"Ensemble top-4 accuracy: {ensemble_top4_acc*100:.4f}")
+    args = parser.parse_args()
+    main(args)

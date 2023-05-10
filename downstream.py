@@ -1,7 +1,5 @@
-import os
-
 import torch
-from torch.utils.data import DataLoader, TensorDataset, Subset
+from torch.utils.data import DataLoader, TensorDataset, Subset, random_split
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
 import pytorch_lightning as pl
@@ -17,9 +15,6 @@ from torchmetrics import Accuracy
 import os
 from tqdm import tqdm
 import torch.nn.functional as F
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, random_split
-import torchvision.transforms as transforms
 
 from pytorch_lightning.callbacks import TQDMProgressBar
 

@@ -20,7 +20,16 @@ python pretrain.py --model_type RESNET --model_name AUTOENCODER_PRETRAIN_RESNET_
 
 example:
 
+#### Fine-Tune
+
 ```
 nohup python downstream.py --model_type CNN --model_name AUTOENCODER_PRETRAIN_CNN_MSE > DOWNSTREAM_CNN_MSE.txt &
 nohup python downstream.py --model_type RESNET --model_name AUTOENCODER_PRETRAIN_RESNET_PSE6 > DOWNSTREAM_RESNET_PSE6.txt &
+```
+
+#### Freeze Encoder
+
+```
+nohup python downstream.py --model_type CNN --model_name AUTOENCODER_PRETRAIN_CNN_MSE --use_features 1 > DOWNSTREAM_CNN_MSE.txt &
+nohup python downstream.py --model_type RESNET --model_name AUTOENCODER_PRETRAIN_RESNET_PSE6 --use_features 1 > DOWNSTREAM_RESNET_PSE6.txt &
 ```

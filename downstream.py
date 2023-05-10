@@ -131,6 +131,14 @@ class DownstreamWrapper(pl.LightningModule):
 
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.9, patience=40)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'valid_loss'}
+    
+#         if self.freeze_encoder:
+#             optimizer = torch.optim.Adam(self.classifier.parameters(), lr=1e-4)
+#         else:
+#             optimizer = torch.optim.Adam(self.parameters(), lr=3e-3)
+
+#         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.6, patience=100)
+#         return {'optimizer': optimizer, 'lr_scheduler': scheduler, 'monitor': 'valid_loss'}
         
     def on_train_epoch_end(self):
         loss_avg = torch.stack(self.training_losses).mean()
@@ -188,7 +196,7 @@ class KFoldDataModule(pl.LightningDataModule):
         
         # Define transforms for data augmentation
         self.train_transform = transforms.Compose([
-            # transforms.RandomResizedCrop(96),
+            transforms.RandomResizedCrop(size=96,scale=(0.8, 1.0),ratio=(0.8, 1.2)),
             transforms.RandomHorizontalFlip(),
             transforms.ColorJitter(brightness=0.2, contrast=0.1, saturation=0.05, hue=0.05),
             transforms.RandomRotation(degrees=10),
